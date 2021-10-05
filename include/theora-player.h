@@ -2,4 +2,6 @@
 
 namespace theoraplayer {
 
+    void test();
+
 }
