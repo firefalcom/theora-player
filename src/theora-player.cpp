@@ -24,6 +24,7 @@ namespace theoraplayer
     {
         SDL_Window *window;
         SDL_Surface *surface;
+
         ogg_sync_state oy;
         ogg_page og;
         ogg_stream_state vo;
@@ -40,6 +41,9 @@ namespace theoraplayer
         int videobuf_ready = 0;
         ogg_int64_t videobuf_granulepos = -1;
         double videobuf_time = 0;
+
+        int width, height;
+        uint8_t *pixels{ nullptr };
 
         void onVideoUpdate();
         int queuePage( ogg_page * );
@@ -66,24 +70,27 @@ namespace theoraplayer
 
     void Player::Pimpl::onVideoUpdate()
     {
-        int i;
         th_ycbcr_buffer yuv;
-        int y_offset, uv_offset;
         th_decode_ycbcr_out( td, yuv );
 
         /* printf( "%i\n", surface->w ); */
 
-        y_offset = ( ti.pic_x & ~1 ) + yuv[0].stride * ( ti.pic_y & ~1 );
+        /* y_offset = ( ti.pic_x & ~1 ) + yuv[0].stride * ( ti.pic_y & ~1 ); */
+
+        for ( int y = 0; y < height; y++ )
+        {
+            for ( int x = 0; x < width; x++ )
+            {
+                pixels[( y * height + x ) * 3 + 0] = yuv[0].data[yuv[0].stride * y + x];
+            }
+        }
 
         SDL_LockSurface( surface );
-
-        for ( i = 0; i < surface->h; i++ )
-            memcpy( ( uint8_t * )surface->pixels + i * surface->pitch,
-                yuv[0].data + y_offset + yuv[0].stride * i,
-                surface->w );
-
+        for ( int y = 0; y < height; y++ )
+        {
+            memcpy( ( uint8_t * )surface->pixels + y * surface->pitch, pixels, width * 3 );
+        }
         SDL_UnlockSurface( surface );
-
         SDL_UpdateWindowSurface( window );
     }
 
@@ -107,10 +114,6 @@ namespace theoraplayer
 
         int frames = 0;
         int dropped = 0;
-
-        SDL_Init( SDL_INIT_VIDEO );
-        window = SDL_CreateWindow( "plop", 0, 0, 640, 480, 0 );
-        surface = SDL_GetWindowSurface( window );
 
 #ifdef _WIN32
         _setmode( _fileno( stdin ), _O_BINARY );
@@ -218,6 +221,14 @@ namespace theoraplayer
         assert( theora_p );
 
         stateflag = 0;
+
+        width = ti.pic_width;
+        height = ti.pic_height;
+        pixels = new uint8_t[ width * height * 3 ];
+
+        SDL_Init( SDL_INIT_VIDEO );
+        window = SDL_CreateWindow( "plop", 0, 0, width, height, 0 );
+        surface = SDL_GetWindowSurface( window );
 
         while ( true ) // :TODO:
         {
@@ -329,6 +340,9 @@ namespace theoraplayer
 
         if ( infile && infile != stdin )
             fclose( infile );
+
+        delete[] pixels;
+        pixels = nullptr;
     }
 
     Player::Player() : pimpl( new Pimpl() )
