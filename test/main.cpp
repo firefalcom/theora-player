@@ -9,7 +9,9 @@ int main()
 {
     puts( "theora-player-test" );
 
-    theoraplayer::test();
+    theoraplayer::Player player;
+
+    player.play("./res/sample.ogv");
 
     /* SDL_Init( SDL_INIT_VIDEO ); */
     /* window = SDL_CreateWindow( "theora-player-test", 0, 0, 640, 480, 0 ); */
