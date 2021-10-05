@@ -42,7 +42,7 @@ namespace theoraplayer
         double videobuf_time = 0;
 
         void onVideoUpdate();
-        int queue_page( ogg_page * );
+        int queuePage( ogg_page * );
         void play( const char * );
     };
 
@@ -87,7 +87,7 @@ namespace theoraplayer
         SDL_UpdateWindowSurface( window );
     }
 
-    int Player::Pimpl::queue_page( ogg_page *page )
+    int Player::Pimpl::queuePage( ogg_page *page )
     {
         if ( theora_p )
             ogg_stream_pagein( &to, page );
@@ -116,7 +116,7 @@ namespace theoraplayer
         _setmode( _fileno( stdin ), _O_BINARY );
 #endif
 
-        infile = fopen( "./res/sample.ogv", "rb" );
+        infile = fopen( filepath, "rb" );
 
         assert( infile != nullptr );
 
@@ -136,7 +136,7 @@ namespace theoraplayer
 
                 if ( !ogg_page_bos( &og ) )
                 {
-                    queue_page( &og );
+                    queuePage( &og );
                     stateflag = 1;
                     break;
                 }
@@ -182,7 +182,7 @@ namespace theoraplayer
 
             if ( ogg_sync_pageout( &oy, &og ) > 0 )
             {
-                queue_page( &og );
+                queuePage( &og );
             }
             else
             {
@@ -263,7 +263,7 @@ namespace theoraplayer
                 buffer_data( infile, &oy );
                 while ( ogg_sync_pageout( &oy, &og ) > 0 )
                 {
-                    queue_page( &og );
+                    queuePage( &og );
                 }
             }
 
@@ -329,7 +329,6 @@ namespace theoraplayer
 
         if ( infile && infile != stdin )
             fclose( infile );
-
     }
 
     Player::Player() : pimpl( new Pimpl() )
