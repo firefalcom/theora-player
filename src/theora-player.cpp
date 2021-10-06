@@ -15,16 +15,12 @@
 #include <unistd.h>
 
 #include <chrono>
-#include <SDL2/SDL.h>
 
 namespace theoraplayer
 {
 
     struct Player::Pimpl
     {
-        SDL_Window *window;
-        SDL_Surface *surface;
-
         ogg_sync_state oy;
         ogg_page og;
         ogg_stream_state vo;
@@ -43,11 +39,14 @@ namespace theoraplayer
         double videobuf_time = 0;
 
         int width, height;
-        uint8_t *pixels{ nullptr };
+        std::function< void( const int, const int ) > initCallback;
+        std::function< void( const Player::YCbCrBuffer &, const int, const int ) > updateCallback;
 
         void onVideoUpdate();
         int queuePage( ogg_page * );
+        bool playing{ false };
         void play( const char * );
+        void stop();
     };
 
     int buffer_data( FILE *in, ogg_sync_state *oy )
@@ -73,25 +72,7 @@ namespace theoraplayer
         th_ycbcr_buffer yuv;
         th_decode_ycbcr_out( td, yuv );
 
-        /* printf( "%i\n", surface->w ); */
-
-        /* y_offset = ( ti.pic_x & ~1 ) + yuv[0].stride * ( ti.pic_y & ~1 ); */
-
-        for ( int y = 0; y < height; y++ )
-        {
-            for ( int x = 0; x < width; x++ )
-            {
-                pixels[( y * height + x ) * 3 + 0] = yuv[0].data[yuv[0].stride * y + x];
-            }
-        }
-
-        SDL_LockSurface( surface );
-        for ( int y = 0; y < height; y++ )
-        {
-            memcpy( ( uint8_t * )surface->pixels + y * surface->pitch, pixels, width * 3 );
-        }
-        SDL_UnlockSurface( surface );
-        SDL_UpdateWindowSurface( window );
+        updateCallback( yuv, width, height );
     }
 
     int Player::Pimpl::queuePage( ogg_page *page )
@@ -103,6 +84,7 @@ namespace theoraplayer
 
     void Player::Pimpl::play( const char *filepath )
     {
+        playing = true;
 
         int pp_level_max;
         int pp_level;
@@ -224,15 +206,11 @@ namespace theoraplayer
 
         width = ti.pic_width;
         height = ti.pic_height;
-        pixels = new uint8_t[ width * height * 3 ];
 
-        SDL_Init( SDL_INIT_VIDEO );
-        window = SDL_CreateWindow( "plop", 0, 0, width, height, 0 );
-        surface = SDL_GetWindowSurface( window );
+        initCallback( width, height );
 
-        while ( true ) // :TODO:
+        while ( playing )
         {
-
             while ( theora_p && !videobuf_ready )
             {
                 if ( ogg_stream_packetout( &to, &op ) > 0 )
@@ -340,9 +318,11 @@ namespace theoraplayer
 
         if ( infile && infile != stdin )
             fclose( infile );
+    }
 
-        delete[] pixels;
-        pixels = nullptr;
+    void Player::Pimpl::stop()
+    {
+        playing = false;
     }
 
     Player::Player() : pimpl( new Pimpl() )
@@ -351,8 +331,23 @@ namespace theoraplayer
 
     Player::~Player() = default;
 
+    void Player::setInitializeCallback( std::function< void( const int, const int ) > func )
+    {
+        pimpl->initCallback = func;
+    }
+
+    void Player::setUpdateCallback( std::function< void( const Player::YCbCrBuffer &, const int, const int ) > func )
+    {
+        pimpl->updateCallback = func;
+    }
+
     void Player::play( const char *filepath )
     {
         pimpl->play( filepath );
+    }
+
+    void Player::stop()
+    {
+        pimpl->stop();
     }
 }

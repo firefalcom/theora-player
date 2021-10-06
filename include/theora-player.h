@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <functional>
+#include "theora/theoradec.h"
 
 namespace theoraplayer
 {
@@ -11,8 +12,12 @@ namespace theoraplayer
         Player();
         ~Player();
 
-        void setUpdateCallback( std::function< void( uint8_t * ) > func );
+        using YCbCrBuffer = th_ycbcr_buffer;
+
+        void setInitializeCallback( std::function< void( const int, const int ) > func );
+        void setUpdateCallback( std::function< void( const YCbCrBuffer &, const int, const int ) > func );
         void play( const char *filepath );
+        void stop();
 
       private:
         struct Pimpl;
