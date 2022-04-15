@@ -10,9 +10,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <sys/time.h>
 #include <sys/types.h>
-#include <unistd.h>
+
+#if defined( WIN32 )
+    #include <WinSock2.h>
+    #include <io.h>
+#else
+    #include <sys/time.h>
+    #include <unistd.h>
+#endif
 
 #include <chrono>
 
