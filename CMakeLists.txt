@@ -29,7 +29,7 @@ conan_cmake_run(
     BUILD missing
     )
 
-target_include_directories(theora-player PUBLIC include)
+target_include_directories(theora-player PUBLIC ./include)
 
 target_link_libraries(theora-player PUBLIC CONAN_PKG::theora theora-player-test)
 
