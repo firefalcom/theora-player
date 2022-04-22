@@ -24,14 +24,16 @@ add_library(theora-player src/theora-player.cpp)
 
 conan_cmake_run(
     REQUIRES
+	ogg/1.3.5
         theora/1.1.1
+	vorbis/1.3.7
     BASIC_SETUP CMAKE_TARGETS
     BUILD missing
     )
 
 target_include_directories(theora-player PUBLIC ./include)
 
-target_link_libraries(theora-player PUBLIC CONAN_PKG::theora theora-player-test)
+target_link_libraries(theora-player PUBLIC CONAN_PKG::theora CONAN_PKG::vorbis theora-player-test)
 
 if(WIN32)
 target_link_libraries( theora-player PUBLIC Ws2_32.lib )
