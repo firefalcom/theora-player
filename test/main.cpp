@@ -4,23 +4,20 @@
 #include <SDL2/SDL.h>
 #include <iostream>
 #include <vector>
+#include <queue>
 
-theoraplayer::AudioPacket* audioPacket{};
+std::queue< theoraplayer::AudioPacket > audioPacketQueue;
+SDL_AudioDeviceID audioDeviceId;
 
-static void SDLCALL audioCallback(void* userdata, Uint8* stream, int len) 
+static void SDLCALL audioCallback( void *userdata, Uint8 *stream, int len )
 {
-    if (!audioPacket)
+    if ( audioPacketQueue.empty() )
         return;
 
-    if (audioPacket->size == 0)
-        return;
+    auto packet = audioPacketQueue.front();
+    audioPacketQueue.pop();
 
-    len = (len > audioPacket->playms ? audioPacket->playms : len);
-
-    SDL_MixAudio(stream, (Uint8*)audioPacket->audiobuf, len, SDL_MIX_MAXVOLUME);
-
-    audioPacket->audiobuf += len;
-    audioPacket->size -= len;
+    memcpy( stream, packet.samples, packet.size );
 }
 
 int main()
@@ -28,6 +25,7 @@ int main()
     puts( "theora-player-test" );
 
     SDL_Init( SDL_INIT_VIDEO | SDL_INIT_AUDIO );
+
     auto window = SDL_CreateWindow( "theora-player-test", 0, 0, 640, 480, 0 );
     auto renderer = SDL_CreateRenderer( window, -1, 0 );
 
@@ -36,25 +34,27 @@ int main()
     theoraplayer::Player player;
 
     player.setInitializeCallback(
-        [&]( const int width, const int height, theoraplayer::AudioPacket& audiopacket ) 
+        [&]( const int width, const int height, theoraplayer::AudioPacket &audioPacket )
         {
             texture = SDL_CreateTexture( renderer, SDL_PIXELFORMAT_YV12, SDL_TEXTUREACCESS_STREAMING, width, height );
 
             SDL_AudioSpec audiospec{};
-            audiospec.freq = audiopacket.freq;
-            audiospec.format = AUDIO_S16SYS;
-            audiospec.channels = audiopacket.channels;
-            audiospec.samples = 2048;
+            audiospec.freq = audioPacket.freq;
+            audiospec.format = AUDIO_S16LSB;
+            audiospec.channels = audioPacket.channels;
+            audiospec.samples = 1024;
             audiospec.callback = audioCallback;
 
-            SDL_OpenAudio(&audiospec, &audiospec);
+            audioDeviceId = SDL_OpenAudioDevice( nullptr, 0, &audiospec, &audiospec, 0 );
 
-            audiopacket.freq = audiospec.freq;
-            audiopacket.channels = audiospec.channels;
-            audiopacket.size = audiospec.size;
-            audiopacket.audiobuf = (int16_t*)malloc(audiospec.size);
+            if ( audioDeviceId < 0 )
+            {
+                puts( SDL_GetError() );
+            }
 
-            audioPacket = &audiopacket;
+            audioPacket.freq = audiospec.freq;
+            audioPacket.channels = audiospec.channels;
+            audioPacket.size = audiospec.size;
         } );
 
     player.setUpdateCallback(
@@ -78,18 +78,12 @@ int main()
             }
         } );
 
-    player.setPlaySoundCallback(
-        [&](const theoraplayer::AudioPacket& audioPacket)
+    player.setAudioUpdateCallback(
+        [&]( const theoraplayer::AudioPacket &audioPacket )
         {
-            SDL_PauseAudio(0);
-
-            /*while (audioPacket.size > 0) {
-                SDL_Delay(100);
-            }
-
-            SDL_CloseAudio();*/
-        }
-    );
+            SDL_PauseAudioDevice( audioDeviceId, 0 );
+            audioPacketQueue.push( audioPacket );
+        } );
 
     player.play( "./res/sample2.ogv" );
 

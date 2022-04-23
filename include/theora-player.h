@@ -13,14 +13,12 @@ namespace theoraplayer
         int channels;
         int freq;
         int frames;
-        float* samples;
         uint32_t size;
-        int16_t* audiobuf;
+        int16_t *samples{ nullptr };
     };
 
     struct AudioQueue final
     {
-
     };
 
     class Player
@@ -31,9 +29,9 @@ namespace theoraplayer
 
         using YCbCrBuffer = th_ycbcr_buffer;
 
-        void setInitializeCallback( std::function< void( const int, const int, AudioPacket& ) > func );
+        void setInitializeCallback( std::function< void( const int, const int, AudioPacket & ) > func );
         void setUpdateCallback( std::function< void( const YCbCrBuffer &, const int, const int ) > func );
-        void setPlaySoundCallback(std::function<void(const AudioPacket&)> func);
+        void setAudioUpdateCallback( std::function< void( const AudioPacket & ) > func );
         void play( const char *filepath );
         void stop();
 

@@ -14,11 +14,11 @@
 #include <sys/types.h>
 
 #if defined( WIN32 )
-    #include <WinSock2.h>
-    #include <io.h>
+#    include <WinSock2.h>
+#    include <io.h>
 #else
-    #include <sys/time.h>
-    #include <unistd.h>
+#    include <sys/time.h>
+#    include <unistd.h>
 #endif
 
 #include <chrono>
@@ -32,16 +32,17 @@ namespace theoraplayer
         ogg_page og;
         ogg_stream_state vo;
         ogg_stream_state to;
+
         th_info ti;
         th_comment tc;
         th_dec_ctx *td = NULL;
         th_setup_info *ts = NULL;
         th_pixel_fmt px_fmt;
 
-        vorbis_info vi;
-        vorbis_dsp_state vd;
-        vorbis_block vb;
-        vorbis_comment vc;
+        vorbis_info vi{};
+        vorbis_dsp_state vd{};
+        vorbis_block vb{};
+        vorbis_comment vc{};
 
         int theora_p = 0;
         int vorbis_p = 0;
@@ -51,23 +52,14 @@ namespace theoraplayer
         ogg_int64_t videobuf_granulepos = -1;
         double videobuf_time = 0;
 
-        int audiobuf_fill{ 0 };
-        int audiobuf_ready{ 0 };
-        ogg_int16_t* audiobuf{};
         ogg_int64_t audiobuf_granulepos{ 0 };
 
-        long audiofd_totalsize{ -1 };
-        int audiofd_fragsize;
-        int audiofd{ -1 };
-        ogg_int64_t audiofd_timer_calibrate{ -1 };
-
-        AudioPacket* audioQueue{};
-        AudioPacket* audioQueueTail{};
+        AudioPacket audioPacket{};
 
         int width, height;
-        std::function< void( const int, const int, AudioPacket& audioPacket ) > initCallback;
+        std::function< void( const int, const int, AudioPacket &audioPacket ) > initCallback;
         std::function< void( const Player::YCbCrBuffer &, const int, const int ) > updateCallback;
-        std::function<void(const AudioPacket&)> playSoundCallback;
+        std::function< void( const AudioPacket & ) > audioUpdateCallback;
 
         void onVideoUpdate();
         void onAudioUpdate();
@@ -105,37 +97,7 @@ namespace theoraplayer
 
     void Player::Pimpl::onAudioUpdate()
     {
-        /*if (audiobuf_ready) 
-        {
-            audio_buf_info info;
-            long bytes;
-
-            ioctl(audiofd, SNDCTL_DSP_GETOSPACE, &info);
-            bytes = info.bytes;
-            if (bytes >= audiofd_fragsize) {
-                if (bytes == audiofd_totalsize)
-                    audio_calibrate_timer(1);
-
-                while (1) 
-                {
-                    bytes = write(audiofd, audiobuf + (audiofd_fragsize - audiobuf_fill),
-                        audiofd_fragsize);
-
-                    if (bytes > 0) {
-
-                        if (bytes != audiobuf_fill) 
-                        {
-                            audiobuf_fill -= bytes;
-                        }
-                        else
-                            break;
-                    }
-                }
-
-                audiobuf_fill = 0;
-                audiobuf_ready = 0;
-            }
-        }*/
+        audioUpdateCallback( audioPacket );
     }
 
     int Player::Pimpl::queuePage( ogg_page *page )
@@ -149,6 +111,7 @@ namespace theoraplayer
 
     void Player::Pimpl::play( const char *filepath )
     {
+        puts( "play" );
         playing = true;
 
         int pp_level_max;
@@ -172,8 +135,8 @@ namespace theoraplayer
 
         ogg_sync_init( &oy );
 
-        vorbis_info_init(&vi);
-        vorbis_comment_init(&vc);
+        vorbis_info_init( &vi );
+        vorbis_comment_init( &vc );
 
         th_comment_init( &tc );
         th_info_init( &ti );
@@ -203,9 +166,9 @@ namespace theoraplayer
                     memcpy( &to, &test, sizeof( test ) );
                     theora_p = 1;
                 }
-                else if ( !vorbis_p && vorbis_synthesis_headerin(&vi, &vc, &op) >= 0)
+                else if ( !vorbis_p && vorbis_synthesis_headerin( &vi, &vc, &op ) >= 0 )
                 {
-                    memcpy(&vo, &test, sizeof(test));
+                    memcpy( &vo, &test, sizeof( test ) );
                     vorbis_p = 1;
                 }
                 else
@@ -215,7 +178,7 @@ namespace theoraplayer
             }
         }
 
-        while ( ( theora_p && theora_p < 3 ) || (vorbis_p && vorbis_p < 3) )
+        while ( ( theora_p && theora_p < 3 ) || ( vorbis_p && vorbis_p < 3 ) )
         {
             int ret;
 
@@ -238,23 +201,22 @@ namespace theoraplayer
                 theora_p++;
             }
 
-            while (vorbis_p && (vorbis_p < 3) && (ret = ogg_stream_packetout(&vo, &op))) 
+            while ( vorbis_p && ( vorbis_p < 3 ) && ( ret = ogg_stream_packetout( &vo, &op ) ) )
             {
-                if (ret < 0) 
+                if ( ret < 0 )
                 {
-                    fprintf(stderr, "Error parsing Vorbis stream headers; corrupt stream?\n");
-                    exit(1);
+                    fprintf( stderr, "Error parsing Vorbis stream headers; corrupt stream?\n" );
+                    exit( 1 );
                 }
-                if (vorbis_synthesis_headerin(&vi, &vc, &op)) 
+                if ( vorbis_synthesis_headerin( &vi, &vc, &op ) )
                 {
-                    fprintf(stderr, "Error parsing Vorbis stream headers; corrupt stream?\n");
-                    exit(1);
+                    fprintf( stderr, "Error parsing Vorbis stream headers; corrupt stream?\n" );
+                    exit( 1 );
                 }
                 vorbis_p++;
-                if (vorbis_p == 3)
+                if ( vorbis_p == 3 )
                     break;
             }
-
 
             if ( ogg_sync_pageout( &oy, &og ) > 0 )
             {
@@ -293,17 +255,21 @@ namespace theoraplayer
 
         assert( theora_p );
 
-        if (vorbis_p) 
+        if ( vorbis_p )
         {
-            vorbis_synthesis_init(&vd, &vi);
-            vorbis_block_init(&vd, &vb);
-            fprintf(stderr, "Ogg logical stream %lx is Vorbis %d channel %ld Hz audio.\n",
-                vo.serialno, vi.channels, vi.rate);
+            vorbis_synthesis_init( &vd, &vi );
+            vorbis_block_init( &vd, &vb );
+
+            fprintf( stdout,
+                "Ogg logical stream %lx is Vorbis %d channel %ld Hz audio.\n",
+                vo.serialno,
+                vi.channels,
+                vi.rate );
         }
-        else 
+        else
         {
-            vorbis_info_clear(&vi);
-            vorbis_comment_clear(&vc);
+            vorbis_info_clear( &vi );
+            vorbis_comment_clear( &vc );
         }
 
         stateflag = 0;
@@ -311,68 +277,73 @@ namespace theoraplayer
         width = ti.pic_width;
         height = ti.pic_height;
 
-        AudioPacket audiopacket{};
-        audiopacket.channels = vi.channels;
-        audiopacket.freq = vi.rate;
+        audioPacket.channels = vi.channels;
+        audioPacket.freq = vi.rate;
 
-        initCallback( width, height, audiopacket );
+        initCallback( width, height, audioPacket );
 
-        int audioframes = 0;
+        int audioFrames = 0;
 
         while ( playing )
         {
-            while (vorbis_p && !audiobuf_ready)
+            bool need_pages = false;
+
+            while ( vorbis_p )
             {
-                int ret;
-                float** pcm;
+                float **pcm{ nullptr };
+                const int frames = vorbis_synthesis_pcmout( &vd, &pcm );
 
-                if ((ret = vorbis_synthesis_pcmout(&vd, &pcm)) > 0) 
+                if ( frames > 0 )
                 {
-                    int count = audiobuf_fill / 2;
-                    int maxsamples = (audiopacket.size - audiobuf_fill) / 2 / vi.channels;
+                    audioPacket.size = frames * vi.channels * sizeof( int16_t );
+                    audioPacket.samples = ( int16_t * )malloc( audioPacket.size );
+                    audioPacket.frames = frames;
 
-                    audiopacket.playms += (unsigned long)((((double)audioframes) / ((double)vi.rate)) * 1000.0);
-                    audiopacket.frames = ret;
-                    //audiopacket.samples = (float*)malloc(sizeof(float) * ret * vi.channels);
+                    /* audioPacket.playms += */
+                    /* ( unsigned long )( ( ( ( double )audioFrames ) / ( ( double )vi.rate ) ) * 1000.0 ); */
 
-                    for (i = 0; i < ret && i < maxsamples; i++)
+                    auto count = 0;
+
+                    for ( i = 0; i < frames; i++ )
                     {
-                        for (j = 0; j < vi.channels; j++) 
+                        for ( j = 0; j < vi.channels; j++ )
                         {
-                            int val = rint(pcm[j][i] * 32767.f);
-                            if (val > 32767)
+                            int val = rint( pcm[j][i] * 32767.f );
+                            if ( val > 32767 )
                                 val = 32767;
-                            if (val < -32768)
+                            if ( val < -32768 )
                                 val = -32768;
-                            audiopacket.audiobuf[count++] = val;
+                            audioPacket.samples[count++] = val;
                         }
                     }
 
-                    vorbis_synthesis_read(&vd, i);
-                    audioframes += ret;
+                    vorbis_synthesis_read( &vd, frames );
+                    audioFrames += frames;
 
-                    audiobuf_fill += i * vi.channels * 2;
-                    if (audiobuf_fill == audiopacket.size)
-                        audiobuf_ready = 1;
-                    if (vd.granulepos >= 0)
-                        audiobuf_granulepos = vd.granulepos - ret + i;
+                    onAudioUpdate();
+
+                    if ( vd.granulepos >= 0 )
+                        audiobuf_granulepos = vd.granulepos - frames + i;
                     else
                         audiobuf_granulepos += i;
                 }
-                else 
+                else
                 {
-                    if (ogg_stream_packetout(&vo, &op) > 0) 
+                    if ( ogg_stream_packetout( &vo, &op ) > 0 )
                     {
-                        if (vorbis_synthesis(&vb, &op) == 0)
-                            vorbis_synthesis_blockin(&vd, &vb);
+                        if ( vorbis_synthesis( &vb, &op ) == 0 )
+                            vorbis_synthesis_blockin( &vd, &vb );
                     }
                     else
+                    {
+                        if ( !theora_p )
+                            need_pages = true;
                         break;
+                    }
                 }
-
             }
 
-            while ( theora_p && !videobuf_ready )
+            if ( theora_p && !videobuf_ready )
             {
                 if ( ogg_stream_packetout( &to, &op ) > 0 )
                 {
@@ -401,29 +372,24 @@ namespace theoraplayer
                     }
                 }
                 else
-                    break;
-            }
-
-            if ( !videobuf_ready && !audiobuf_ready && feof( infile ) )
-                break;
-
-            if ( !videobuf_ready || !audiobuf_ready )
-            {
-                buffer_data( infile, &oy );
-                while ( ogg_sync_pageout( &oy, &og ) > 0 )
                 {
-                    queuePage( &og );
+                    need_pages = true;
+                    //                    break;
                 }
             }
 
-            if (stateflag)
+            if ( feof( infile ) )
             {
-                onAudioUpdate();
-                static bool soundplayed = false;
-                if (!soundplayed && audiobuf_ready)
+                break;
+            }
+
+            if ( need_pages )
+            {
+                buffer_data( infile, &oy );
+
+                while ( ogg_sync_pageout( &oy, &og ) > 0 )
                 {
-                    playSoundCallback(audiopacket);
-                    soundplayed = true;
+                    queuePage( &og );
                 }
             }
 
@@ -433,7 +399,7 @@ namespace theoraplayer
                 videobuf_ready = 0;
             }
 
-            if ( stateflag && (audiobuf_ready || !vorbis_p) && ( videobuf_ready || !theora_p ) )
+            if ( stateflag && vorbis_p && ( videobuf_ready || !theora_p ) )
             {
                 struct timeval timeout;
                 fd_set writefs;
@@ -478,14 +444,13 @@ namespace theoraplayer
                 stateflag = 1;
         }
 
-
-        if (vorbis_p)
+        if ( vorbis_p )
         {
-            ogg_stream_clear(&vo);
-            vorbis_block_clear(&vb);
-            vorbis_dsp_clear(&vd);
-            vorbis_comment_clear(&vc);
-            vorbis_info_clear(&vi);
+            ogg_stream_clear( &vo );
+            vorbis_block_clear( &vb );
+            vorbis_dsp_clear( &vd );
+            vorbis_comment_clear( &vc );
+            vorbis_info_clear( &vi );
         }
         if ( theora_p )
         {
@@ -511,7 +476,7 @@ namespace theoraplayer
 
     Player::~Player() = default;
 
-    void Player::setInitializeCallback( std::function< void( const int, const int, AudioPacket& ) > func )
+    void Player::setInitializeCallback( std::function< void( const int, const int, AudioPacket & ) > func )
     {
         pimpl->initCallback = func;
     }
@@ -521,9 +486,9 @@ namespace theoraplayer
         pimpl->updateCallback = func;
     }
 
-    void Player::setPlaySoundCallback(std::function<void(const AudioPacket&)> func)
+    void Player::setAudioUpdateCallback( std::function< void( const AudioPacket & ) > func )
     {
-        pimpl->playSoundCallback = func;
+        pimpl->audioUpdateCallback = func;
     }
 
     void Player::play( const char *filepath )
