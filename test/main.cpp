@@ -9,7 +9,7 @@
 std::queue< theoraplayer::AudioPacket > audioPacketQueue;
 SDL_AudioDeviceID audioDeviceId;
 
-static void SDLCALL audioCallback( void *userdata, Uint8 *stream, int len )
+static void SDLCALL audioCallback( void *user_data, Uint8 *stream, int len )
 {
     if ( audioPacketQueue.empty() )
         return;
@@ -34,27 +34,27 @@ int main()
     theoraplayer::Player player;
 
     player.setInitializeCallback(
-        [&]( const int width, const int height, theoraplayer::AudioPacket &audioPacket )
+        [&]( const int width, const int height, theoraplayer::AudioPacket &audio_packet )
         {
             texture = SDL_CreateTexture( renderer, SDL_PIXELFORMAT_YV12, SDL_TEXTUREACCESS_STREAMING, width, height );
 
-            SDL_AudioSpec audiospec{};
-            audiospec.freq = audioPacket.freq;
-            audiospec.format = AUDIO_S16LSB;
-            audiospec.channels = audioPacket.channels;
-            audiospec.samples = 1024;
-            audiospec.callback = audioCallback;
+            SDL_AudioSpec audio_spec{};
+            audio_spec.freq = audio_packet.freq;
+            audio_spec.format = AUDIO_S16LSB;
+            audio_spec.channels = audio_packet.channels;
+            audio_spec.samples = 1024;
+            audio_spec.callback = audioCallback;
 
-            audioDeviceId = SDL_OpenAudioDevice( nullptr, 0, &audiospec, &audiospec, 0 );
+            audioDeviceId = SDL_OpenAudioDevice( nullptr, 0, &audio_spec, &audio_spec, 0 );
 
             if ( audioDeviceId < 0 )
             {
                 puts( SDL_GetError() );
             }
 
-            audioPacket.freq = audiospec.freq;
-            audioPacket.channels = audiospec.channels;
-            audioPacket.size = audiospec.size;
+            audio_packet.freq = audio_spec.freq;
+            audio_packet.channels = audio_spec.channels;
+            audio_packet.size = audio_spec.size;
         } );
 
     player.setUpdateCallback(
@@ -79,10 +79,10 @@ int main()
         } );
 
     player.setAudioUpdateCallback(
-        [&]( const theoraplayer::AudioPacket &audioPacket )
+        [&]( const theoraplayer::AudioPacket &audio_packet )
         {
             SDL_PauseAudioDevice(audioDeviceId, 0);
-            audioPacketQueue.push(audioPacket);
+            audioPacketQueue.push(audio_packet);
         } );
 
     player.setGetTicksCallback(
