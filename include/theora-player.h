@@ -3,7 +3,6 @@
 #include <memory>
 #include <functional>
 #include "theora/theoradec.h"
-#include <vector>
 
 namespace theoraplayer
 {
