@@ -12,7 +12,7 @@ conan_cmake_run(
     BUILD missing
     )
 
-# target_link_libraries(theora-player-test PUBLIC theora-player CONAN_PKG::sdl)
-target_link_libraries(theora-player-test SDL2)
-target_link_libraries(theora-player-test theora-player)
+target_link_libraries(theora-player-test PUBLIC theora-player CONAN_PKG::sdl)
+# target_link_libraries(theora-player-test SDL2)
+# target_link_libraries(theora-player-test theora-player)
 

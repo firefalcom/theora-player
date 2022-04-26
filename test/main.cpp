@@ -14,7 +14,7 @@ static void SDLCALL audioCallback( void *userdata, Uint8 *stream, int len )
     if ( audioPacketQueue.empty() )
         return;
 
-    auto packet = audioPacketQueue.front();
+    const auto &packet = audioPacketQueue.front();
     audioPacketQueue.pop();
 
     memcpy( stream, packet.samples, packet.size );
@@ -81,8 +81,14 @@ int main()
     player.setAudioUpdateCallback(
         [&]( const theoraplayer::AudioPacket &audioPacket )
         {
-            SDL_PauseAudioDevice( audioDeviceId, 0 );
-            audioPacketQueue.push( audioPacket );
+            SDL_PauseAudioDevice(audioDeviceId, 0);
+            audioPacketQueue.push(audioPacket);
+        } );
+
+    player.setGetTicksCallback(
+        []()
+        {
+            return SDL_GetTicks();
         } );
 
     player.play( "./res/sample2.ogv" );

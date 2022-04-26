@@ -60,6 +60,7 @@ namespace theoraplayer
         std::function< void( const int, const int, AudioPacket &audioPacket ) > initCallback;
         std::function< void( const Player::YCbCrBuffer &, const int, const int ) > updateCallback;
         std::function< void( const AudioPacket & ) > audioUpdateCallback;
+        std::function< uint32_t() > getTicksCallback;
 
         void onVideoUpdate();
         void onAudioUpdate();
@@ -282,7 +283,9 @@ namespace theoraplayer
 
         initCallback( width, height, audioPacket );
 
-        int audioFrames = 0;
+        int audio_frames{ 0 };
+
+        const uint32_t baseTicks = getTicksCallback();
 
         while ( playing )
         {
@@ -296,11 +299,11 @@ namespace theoraplayer
                 if ( frames > 0 )
                 {
                     audioPacket.size = frames * vi.channels * sizeof( int16_t );
-                    audioPacket.samples = ( int16_t * )malloc( audioPacket.size );
+                    audioPacket.samples = new int16_t[audioPacket.size]{};
                     audioPacket.frames = frames;
 
-                    /* audioPacket.playms += */
-                    /* ( unsigned long )( ( ( ( double )audioFrames ) / ( ( double )vi.rate ) ) * 1000.0 ); */
+                    audioPacket.playms = static_cast< unsigned long >( ( static_cast< double >( audio_frames )
+                        / static_cast<double>( vi.rate ) * 1000.0 ) );
 
                     auto count = 0;
 
@@ -316,11 +319,14 @@ namespace theoraplayer
                             audioPacket.samples[count++] = val;
                         }
                     }
-
+                    
                     vorbis_synthesis_read( &vd, frames );
-                    audioFrames += frames;
+                    audio_frames += frames;
 
+                    const uint32_t now{ getTicksCallback() - baseTicks };
                     onAudioUpdate();
+                    if (audioPacket.playms >= (now + 2000))
+                        break;
 
                     if ( vd.granulepos >= 0 )
                         audiobuf_granulepos = vd.granulepos - frames + i;
@@ -461,6 +467,8 @@ namespace theoraplayer
         }
         ogg_sync_clear( &oy );
 
+        delete[] audioPacket.samples;
+
         if ( infile && infile != stdin )
             fclose( infile );
     }
@@ -489,6 +497,11 @@ namespace theoraplayer
     void Player::setAudioUpdateCallback( std::function< void( const AudioPacket & ) > func )
     {
         pimpl->audioUpdateCallback = func;
+    }
+
+    void Player::setGetTicksCallback(std::function< uint32_t() > func)
+    {
+        pimpl->getTicksCallback = func;
     }
 
     void Player::play( const char *filepath )

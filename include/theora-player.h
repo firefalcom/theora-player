@@ -17,10 +17,6 @@ namespace theoraplayer
         int16_t *samples{ nullptr };
     };
 
-    struct AudioQueue final
-    {
-    };
-
     class Player
     {
       public:
@@ -32,6 +28,7 @@ namespace theoraplayer
         void setInitializeCallback( std::function< void( const int, const int, AudioPacket & ) > func );
         void setUpdateCallback( std::function< void( const YCbCrBuffer &, const int, const int ) > func );
         void setAudioUpdateCallback( std::function< void( const AudioPacket & ) > func );
+        void setGetTicksCallback( std::function< uint32_t() > func );
         void play( const char *filepath );
         void stop();
 
