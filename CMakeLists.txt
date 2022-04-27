@@ -10,11 +10,6 @@ endif()
 
 include(${CMAKE_BINARY_DIR}/conan.cmake)
 
-conan_add_remote(NAME firefalcom
-                 INDEX 0
-                 URL http://ivy.firefal.com:9300
-                 VERIFY_SSL True)
-
 conan_add_remote(NAME conan-center
                  INDEX 1
                  URL https://center.conan.io
