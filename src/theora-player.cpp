@@ -21,7 +21,9 @@
 #    include <unistd.h>
 #endif
 
+#include <algorithm>
 #include <chrono>
+#include <queue>
 
 namespace theoraplayer
 {
@@ -50,24 +52,27 @@ namespace theoraplayer
 
         int videobufReady = 0;
         ogg_int64_t videobufGranulepos = -1;
-        double videobufTime = 0;
+        double videoTime = 0;
 
-        ogg_int64_t audiobufGranulepos{ 0 };
-
-        AudioPacket audioPacket{};
+        int16_t *audioBuffer;
+        AudioSettings audioSettings;
 
         int width, height;
-        std::function< void( const int, const int, AudioPacket &audioPacket ) > initCallback;
-        std::function< void( const Player::YCbCrBuffer &, const int, const int ) > updateCallback;
-        std::function< void( const AudioPacket & ) > audioUpdateCallback;
-        std::function< uint32_t() > getTicksCallback;
+        std::function< void( const int, const int, const AudioSettings & ) > initCallback;
+        std::function< void( const YCbCrBuffer &, const int, const int ) > updateCallback;
+        std::function< void( AudioPacketQueue & ) > audioUpdateCallback;
 
         void onVideoUpdate();
-        void onAudioUpdate();
+
         int queuePage( ogg_page * );
         bool playing{ false };
+        bool playStarted = false;
+
         void play( const char * );
         void stop();
+
+        std::queue< theoraplayer::AudioPacket > audioPacketQueue;
+        std::queue< theoraplayer::VideoFrame > videoFrameQueue;
     };
 
     int buffer_data( FILE *in, ogg_sync_state *oy )
@@ -96,11 +101,6 @@ namespace theoraplayer
         updateCallback( yuv, width, height );
     }
 
-    void Player::Pimpl::onAudioUpdate()
-    {
-        audioUpdateCallback( audioPacket );
-    }
-
     int Player::Pimpl::queuePage( ogg_page *page )
     {
         if ( theoraP )
@@ -112,7 +112,6 @@ namespace theoraplayer
 
     void Player::Pimpl::play( const char *filepath )
     {
-        puts( "play" );
         playing = true;
 
         int pp_level_max;
@@ -278,14 +277,18 @@ namespace theoraplayer
         width = tinfo.pic_width;
         height = tinfo.pic_height;
 
-        audioPacket.channels = vinfo.channels;
-        audioPacket.freq = vinfo.rate;
+        audioSettings.channels = vinfo.channels;
+        audioSettings.frequency = vinfo.rate;
+        audioSettings.samples = 1024;
 
-        initCallback( width, height, audioPacket );
+        initCallback( width, height, audioSettings );
 
-        int audio_frames{ 0 };
+        uint32_t audio_buffer_size = sizeof( int16_t ) * audioSettings.samples * audioSettings.channels;
 
-        const uint32_t base_ticks = getTicksCallback();
+        int16_t *audio_buffer = new int16_t[audioSettings.maxMemorySize / 2];
+
+        int16_t *audio_write_pointer = audio_buffer;
+        int16_t *audio_read_pointer = audio_buffer;
 
         while ( playing )
         {
@@ -298,40 +301,29 @@ namespace theoraplayer
 
                 if ( frames > 0 )
                 {
-                    audioPacket.size = frames * vinfo.channels * sizeof( int16_t );
-                    audioPacket.samples = new int16_t[audioPacket.size]{};
-                    audioPacket.frames = frames;
-
-                    audioPacket.playms = static_cast< unsigned long >( ( static_cast< double >( audio_frames )
-                        / static_cast<double>( vinfo.rate ) * 1000.0 ) );
-
+                    auto size = frames * vinfo.channels * sizeof( int16_t );
                     auto count = 0;
+                    auto destination = audio_write_pointer;
 
                     for ( i = 0; i < frames; i++ )
                     {
                         for ( j = 0; j < vinfo.channels; j++ )
                         {
-                            int val = rint( pcm[j][i] * 32767.f );
-                            if ( val > 32767 )
-                                val = 32767;
-                            if ( val < -32768 )
-                                val = -32768;
-                            audioPacket.samples[count++] = val;
+                            int val = std::clamp( static_cast< int >( pcm[j][i] * 32767.f ), -32768, 32768 );
+                            audio_write_pointer[count++] = val;
                         }
                     }
-                    
+
+                    audio_write_pointer += count;
+
+                    while ( audio_read_pointer < audio_write_pointer - audioSettings.samples * audioSettings.channels )
+                    {
+                        audioPacketQueue.push( { audio_read_pointer, audio_buffer_size } );
+
+                        audio_read_pointer += audioSettings.samples * audioSettings.channels;
+                    }
+
                     vorbis_synthesis_read( &vdsp, frames );
-                    audio_frames += frames;
-
-                    const uint32_t now{ getTicksCallback() - base_ticks };
-                    onAudioUpdate();
-                    if (audioPacket.playms >= (now + 2000))
-                        break;
-
-                    if ( vdsp.granulepos >= 0 )
-                        audiobufGranulepos = vdsp.granulepos - frames + i;
-                    else
-                        audiobufGranulepos += i;
                 }
                 else
                 {
@@ -365,27 +357,15 @@ namespace theoraplayer
                     }
                     if ( th_decode_packetin( tdec, &op, &videobufGranulepos ) == 0 )
                     {
-                        videobufTime = th_granule_time( tdec, videobufGranulepos );
+                        videoTime = th_granule_time( tdec, videobufGranulepos );
                         frames++;
-
-                        if ( videobufTime >= get_time() )
-                            videobufReady = 1;
-                        else
-                        {
-                            pp_inc = pp_level > 0 ? -1 : 0;
-                            dropped++;
-                        }
+                        videobufReady = 1;
                     }
                 }
                 else
                 {
                     need_pages = true;
                 }
-            }
-
-            if ( feof( infile ) )
-            {
-                break;
             }
 
             if ( need_pages )
@@ -398,56 +378,83 @@ namespace theoraplayer
                 }
             }
 
-            if ( stateFlag && videobufReady && videobufTime <= get_time() )
+            if ( videobufReady )
             {
-                onVideoUpdate();
+                th_ycbcr_buffer yuv;
+                th_decode_ycbcr_out( tdec, yuv );
+
+                VideoFrame frame;
+
+                for ( int i = 0; i < 3; i++ )
+                {
+                    frame.yuv[i].width = yuv[i].width;
+                    frame.yuv[i].height = yuv[i].height;
+                    frame.yuv[i].stride = yuv[i].stride;
+                    auto size = yuv[i].height * yuv[i].stride;
+                    frame.yuv[i].data = new unsigned char[size];
+                    memcpy( frame.yuv[i].data, yuv[i].data, size );
+                }
+
+                frame.time = videoTime;
+
+                videoFrameQueue.push( frame );
+
                 videobufReady = 0;
             }
 
-            if ( stateFlag && vorbisP && ( videobufReady || !theoraP ) )
+            if ( feof( infile ) )
             {
-                struct timeval timeout;
-                fd_set writefs;
-                fd_set empty;
-                int n = 0;
+                stateFlag = 1;
+            }
 
-                FD_ZERO( &writefs );
-                FD_ZERO( &empty );
-
-                if ( theoraP )
+            if ( !playStarted )
+            {
+                if ( !vorbisP )
                 {
-                    double tdiff;
-                    long milliseconds;
-                    tdiff = videobufTime - get_time();
-
-                    if ( tdiff > tinfo.fps_denominator * 0.25 / tinfo.fps_numerator )
-                    {
-                        pp_inc = pp_level < pp_level_max ? 1 : 0;
-                    }
-                    else if ( tdiff < tinfo.fps_denominator * 0.05 / tinfo.fps_numerator )
-                    {
-                        pp_inc = pp_level > 0 ? -1 : 0;
-                    }
-                    milliseconds = tdiff * 1000 - 5;
-                    if ( milliseconds > 500 )
-                        milliseconds = 500;
-                    if ( milliseconds > 0 )
-                    {
-                        timeout.tv_sec = milliseconds / 1000;
-                        timeout.tv_usec = ( milliseconds % 1000 ) * 1000;
-                    }
+                    playStarted = true;
                 }
                 else
                 {
-                    select( n, &empty, &writefs, &empty, NULL );
+                    if ( audioPacketQueue.size() > audioSettings.preloadSamplesCount )
+                    {
+                        audioUpdateCallback( audioPacketQueue );
+
+                        playStarted = true;
+
+                        get_time_start = std::chrono::high_resolution_clock::now();
+                    }
                 }
             }
 
-            if ( ( !theoraP || videobufReady ) )
-                stateFlag = 1;
-            if ( feof( infile ) )
-                stateFlag = 1;
+            if ( playStarted )
+            {
+                auto now = get_time();
+
+                while ( !videoFrameQueue.empty() )
+                {
+                    auto frame = videoFrameQueue.front();
+
+                    if ( frame.time < now )
+                    {
+                        updateCallback( frame.yuv, width, height );
+                        videoFrameQueue.pop();
+
+                        frame.release();
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+
+                if ( videoFrameQueue.empty() && stateFlag )
+                {
+                    playing = false;
+                }
+            }
         }
+
+        delete[] audio_buffer;
 
         if ( vorbisP )
         {
@@ -466,8 +473,6 @@ namespace theoraplayer
         }
         ogg_sync_clear( &syncState );
 
-        delete[] audioPacket.samples;
-
         if ( infile && infile != stdin )
             fclose( infile );
     }
@@ -483,24 +488,19 @@ namespace theoraplayer
 
     Player::~Player() = default;
 
-    void Player::setInitializeCallback( std::function< void( const int, const int, AudioPacket & ) > func )
+    void Player::setInitializeCallback( std::function< void( const int, const int, const AudioSettings & ) > func )
     {
         pimpl->initCallback = func;
     }
 
-    void Player::setUpdateCallback( std::function< void( const Player::YCbCrBuffer &, const int, const int ) > func )
+    void Player::setUpdateCallback( std::function< void( const YCbCrBuffer &, const int, const int ) > func )
     {
         pimpl->updateCallback = func;
     }
 
-    void Player::setAudioUpdateCallback( std::function< void( const AudioPacket & ) > func )
+    void Player::setAudioUpdateCallback( std::function< void( AudioPacketQueue & ) > func )
     {
         pimpl->audioUpdateCallback = func;
-    }
-
-    void Player::setGetTicksCallback( std::function< uint32_t() > func )
-    {
-        pimpl->getTicksCallback = func;
     }
 
     void Player::play( const char *filepath )
