@@ -17,20 +17,27 @@ conan_add_remote(NAME conan-center
 
 add_library(theora-player src/theora-player.cpp)
 
-conan_cmake_run(
-    REQUIRES
-	ogg/1.3.5
-        theora/1.1.1
-	vorbis/1.3.7
-    BASIC_SETUP CMAKE_TARGETS
-    BUILD missing
-    )
+if(NOT THEORA_PLAYER_SKIP_CONAN)
+    conan_cmake_run(
+        REQUIRES
+            ogg/1.3.5
+            theora/1.1.1
+            vorbis/1.3.7
+        BASIC_SETUP CMAKE_TARGETS
+        BUILD missing
+        )
+endif()
+
+if(TARGET CONAN_PKG::theora)
+    target_link_libraries(theora-player PUBLIC CONAN_PKG::theora)
+endif()
+
+if(TARGET CONAN_PKG::vorbis)
+    target_link_libraries(theora-player PUBLIC CONAN_PKG::vorbis)
+endif()
 
 target_include_directories(theora-player PUBLIC ./include)
 
-target_link_libraries(theora-player PUBLIC CONAN_PKG::theora CONAN_PKG::vorbis theora-player-test)
-
 if(WIN32)
-target_link_libraries( theora-player PUBLIC Ws2_32.lib )
+    target_link_libraries(theora-player PUBLIC Ws2_32.lib)
 endif()
-
