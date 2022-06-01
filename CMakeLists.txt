@@ -39,7 +39,3 @@ if(TARGET CONAN_PKG::vorbis)
 endif()
 
 target_include_directories(theora-player PUBLIC ./include)
-
-if(WIN32)
-    target_link_libraries(theora-player PUBLIC Ws2_32.lib)
-endif()
