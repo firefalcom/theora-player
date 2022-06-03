@@ -13,8 +13,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#if defined( WIN32 )
-#    include <WinSock2.h>
+#if defined( _WIN32 )
 #    include <io.h>
 #else
 #    include <sys/time.h>

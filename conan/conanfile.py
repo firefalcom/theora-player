@@ -14,6 +14,8 @@ class TheoraPlayerConan(ConanFile):
     options = {}
     default_options = {}
 
+    generators = ["cmake"]
+
     exports_sources = "CMakeLists.txt", "../src/*", "../include/*"
 
     def build(self):
@@ -28,7 +30,8 @@ class TheoraPlayerConan(ConanFile):
 
     def package(self):
         self.copy("*.h", dst="include")
-        self.copy("*.a", dst="lib")
+        self.copy("*.a", dst="lib", keep_path=False)
+        self.copy("*.lib", dst="lib", keep_path=False)
 
     def package_info(self):
         self.cpp_info.libs = ["theora-player"]
