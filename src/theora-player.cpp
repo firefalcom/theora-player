@@ -307,7 +307,7 @@ namespace theoraplayer
                     {
                         for ( j = 0; j < vinfo.channels; j++ )
                         {
-                            int val = std::clamp( static_cast< int >( pcm[j][i] * 32767.f ), -32768, 32768 );
+                            int16_t val = std::clamp( static_cast< int >( pcm[j][i] * 32767.f ), -32768, 32767 );
                             audio_write_pointer[count++] = val;
                         }
                     }
